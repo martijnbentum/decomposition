@@ -1,0 +1,3 @@
+numpy
+phraser @ git+https://github.com/martijnbentum/phraser.git
+to-vector @ git+https://github.com/martijnbentum/to_vector.git
