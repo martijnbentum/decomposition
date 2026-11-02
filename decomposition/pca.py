@@ -44,3 +44,17 @@ def pca_embeddings_file(embeddings_filename, output_dir='.'):
         start=d['start'], duration=d['duration'], layer=d['layer'],
         context=d['context'], center=d['center'])
     return path
+
+
+def load_pca(pca_filename):
+    '''Return a dict with the arrays and settings of a _pca.npz file.
+    Scalar settings (model_name, start, layer, ...) are returned as plain
+    Python values instead of 0-d arrays.
+    '''
+    d = {}
+    with np.load(pca_filename) as data:
+        for name in data.files:
+            value = data[name]
+            if value.ndim == 0: value = value.item()
+            d[name] = value
+    return d
