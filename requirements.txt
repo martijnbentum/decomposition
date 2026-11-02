@@ -3,6 +3,7 @@
 
 numpy
 phraser @ git+https://github.com/martijnbentum/phraser.git
+progressbar2>=4.5.0
 to-vector @ git+https://github.com/martijnbentum/to_vector.git
 torch==2.9.1
 torchaudio==2.9.1
