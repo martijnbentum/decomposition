@@ -7,3 +7,4 @@ uv.lock
 
 AGENTS.md
 *.npz
+*.egg-info/
