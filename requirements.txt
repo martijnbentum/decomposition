@@ -1,3 +1,9 @@
+# CUDA 12.6 torch wheels; pip falls back to PyPI on macOS.
+--extra-index-url https://download.pytorch.org/whl/cu126
+
 numpy
 phraser @ git+https://github.com/martijnbentum/phraser.git
 to-vector @ git+https://github.com/martijnbentum/to_vector.git
+torch==2.9.1
+torchaudio==2.9.1
+transformers==5.4.0

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "decomposition"
-version = "0.0.4"
+version = "0.0.5"
 description = "Continuous windowed hidden-state extraction for speech audio"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,7 +12,20 @@ dependencies = [
   "numpy",
   "phraser @ git+https://github.com/martijnbentum/phraser.git",
   "to-vector @ git+https://github.com/martijnbentum/to_vector.git",
+  "torch==2.9.1",
+  "torchaudio==2.9.1",
+  "transformers==5.4.0",
 ]
+
+# CUDA 12.6 wheels on Linux; default PyPI wheels elsewhere.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [tool.setuptools]
 packages = ["decomposition"]
