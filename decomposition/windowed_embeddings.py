@@ -22,7 +22,7 @@ FRAME_SECONDS = STRIDE / SAMPLE_RATE
 
 def compute_windowed_embeddings(audio_filename, model_name, start,
     duration=180.0, layer=9, context=2.0, center=16.0, gpu=True,
-    model=None):
+    model=None, progress=None):
     '''Return (embeddings, times) for duration seconds starting at start.
     audio_filename:  path to the 16 kHz audio file
     model_name:      local model name (see locations), Hugging Face id or
@@ -34,6 +34,7 @@ def compute_windowed_embeddings(audio_filename, model_name, start,
     center:          seconds kept from the middle of each window
     gpu:             whether to run the model on GPU
     model:           optional loaded model, skips loading model_name
+    progress:        optional callback receiving (completed, total) windows
 
     embeddings has shape (n_frames, dim); times holds each frame's start
     time in seconds. Requires context seconds of audio before start and
@@ -57,13 +58,13 @@ def compute_windowed_embeddings(audio_filename, model_name, start,
         path = locations.model_path(model_name)
         model = to_vector.load_model(str(path), gpu=gpu)
     embeddings = _window_centers(audio, model, n_frames, layer,
-        context_frames, center_frames, gpu)
+        context_frames, center_frames, gpu, progress)
     times = start + np.arange(n_frames) * FRAME_SECONDS
     return embeddings, times
 
 
 def _window_centers(audio, model, n_frames, layer, context_frames,
-    center_frames, gpu):
+    center_frames, gpu, progress=None):
     '''Run the model per window and concatenate the center frames.'''
     window_samples = (center_frames + 2 * context_frames) * STRIDE
     chunks = []
@@ -75,6 +76,10 @@ def _window_centers(audio, model, n_frames, layer, context_frames,
         if hidden_states.ndim == 3: hidden_states = hidden_states[0]
         end = context_frames + center_frames
         chunks.append(hidden_states[context_frames:end])
+        if progress is not None:
+            completed = first_frame // center_frames + 1
+            total = -(-n_frames // center_frames)
+            progress(completed, total)
     embeddings = np.concatenate(chunks)[:n_frames]
     if len(embeddings) < n_frames:
         m = f'audio too short: got {len(embeddings)} of {n_frames} frames, '
