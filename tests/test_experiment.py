@@ -11,7 +11,7 @@ import pytest
 from decomposition import compute_speaker_pcas, experiment, pca
 
 
-def fake_experiment(selected, durations, settings, gpu, output_dir, report):
+def fake_experiment(selected, segments, settings, gpu, output_dir, report):
     '''Replace only model inference inside a real spawned worker.'''
     def extract(audio_filename, duration, progress, **kwargs):
         assert duration == 600
@@ -23,7 +23,7 @@ def fake_experiment(selected, durations, settings, gpu, output_dir, report):
     with patch.object(experiment.to_vector, 'load_model') as load_model:
         with patch.object(experiment.windowed_embeddings,
             'compute_windowed_embeddings', side_effect=extract) as extraction:
-            paths = experiment._run_experiment(selected, durations, settings,
+            paths = experiment._run_experiment(selected, segments, settings,
                 gpu, output_dir, report)
         load_model.assert_called_once_with('model', gpu=False)
         load_model.return_value.eval.assert_called_once()
@@ -53,18 +53,18 @@ def test_spawned_prefix_pcas(tmp_path):
         for index in range(10):
             speaker_id = f'{gender}_{index}'
             selected.append((gender, speaker_id, f'{speaker_id}.wav'))
-    durations = list(range(60, 601, 60))
+    segments = [(0.0, float(duration)) for duration in range(60, 601, 60)]
     settings = {'model_name': 'model', 'start': 10, 'layer': 9,
         'context': 2, 'center': 16}
     messages = []
-    args = (selected, durations, settings, False, tmp_path)
+    args = (selected, segments, settings, False, tmp_path)
     paths = experiment._run_spawned(fake_experiment, args, messages.append)
     assert len(paths) == len(set(paths)) == 200
     assert len(list(tmp_path.iterdir())) == 200
     assert f'Worker PID: {os.getpid()}' not in messages
     assert any(message.startswith('Worker PID: ') for message in messages)
     assert messages.count('  Extraction: 38/38 windows') == 20
-    assert messages.count('  PCA saved: 10/10 durations') == 20
+    assert messages.count('  PCA saved: 10/10 segments') == 20
     speaker_ids = {'male': set(), 'female': set()}
     for path in paths:
         result = pca.load_pca(path)
@@ -133,3 +133,36 @@ def test_window_progress_and_prefix_equivalence():
         shortest = module._window_centers(audio, None, 3, 0, 1, 2, False)
     np.testing.assert_array_equal(longest[:3], shortest)
     assert messages == [(1, 3), (2, 3), (3, 3)]
+
+
+def test_make_segments():
+    segments = experiment.make_segments([60.0, 180.0, 300.0], 600.0)
+    assert segments[:10] == [(index * 60.0, 60.0) for index in range(10)]
+    assert segments[10:13] == [(0.0, 180.0), (180.0, 180.0), (360.0, 180.0)]
+    assert segments[13:] == [(0.0, 300.0), (300.0, 300.0)]
+
+
+def test_segment_pcas(tmp_path):
+    values = np.arange(90_000, dtype=float).reshape(30_000, 3)
+    values = values ** 2 % 997
+    durations = [float(value) * 60 for value in range(1, 6)]
+    segments = experiment.make_segments(durations, 600.0)
+    settings = {'model_name': 'model', 'start': 10.0, 'layer': 9,
+        'context': 2.0, 'center': 16.0}
+    recording = ('male', 'N01', 'fn01.wav')
+    module = experiment.windowed_embeddings
+    with patch.object(module, 'compute_windowed_embeddings',
+        return_value=(values, None)) as extraction:
+        paths = experiment._recording_pcas(recording, segments, settings,
+            None, False, tmp_path, lambda message: None)
+    assert extraction.call_args.kwargs['duration'] == 600.0
+    assert len(paths) == len(set(paths)) == 10 + 5 + 3 + 2 + 2
+    names = {path.name for path in paths}
+    assert 'fn01_s-70_dur-60_model_l-9_pca.npz' in names
+    assert 'fn01_s-370_dur-180_model_l-9_pca.npz' in names
+    assert 'fn01_s-550_dur-180_model_l-9_pca.npz' not in names
+    result = pca.load_pca(tmp_path / 'fn01_s-130_dur-120_model_l-9_pca.npz')
+    assert result['start'] == 130 and result['extraction_start'] == 10
+    assert result['n_frames'] == 6000
+    expected = pca.compute_pca(values[6000:12_000])
+    np.testing.assert_allclose(result['covariance'], expected['covariance'])
