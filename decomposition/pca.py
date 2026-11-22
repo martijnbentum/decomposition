@@ -58,3 +58,15 @@ def load_pca(pca_filename):
             if value.ndim == 0: value = value.item()
             d[name] = value
     return d
+
+
+def second_moment(pca_data):
+    '''Return the uncentered second moment E[xx^T] of the frames.
+    pca_data:  dict from load_pca with covariance, mean and n_frames
+
+    covariance is the sample covariance (divided by n - 1), so
+    E[xx^T] = covariance * (n - 1) / n + outer(mean, mean).
+    '''
+    n = pca_data['n_frames']
+    mean = pca_data['mean']
+    return pca_data['covariance'] * (n - 1) / n + np.outer(mean, mean)

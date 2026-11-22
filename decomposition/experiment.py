@@ -1,17 +1,32 @@
 '''PCA for increasing audio durations from a balanced speaker sample.
 
 compute_speaker_pcas uses growing prefixes from one start point;
-compute_segment_pcas uses consecutive non-overlapping segments.
+compute_segment_pcas uses consecutive non-overlapping segments;
+compute_checkpoint_pcas uses fixed segments across training checkpoints.
 '''
 from math import ceil
 import multiprocessing
 from pathlib import Path
+import time
 import traceback
 
 import numpy as np
 import to_vector
+import torch
 
 from . import locations, pca, selection, windowed_embeddings
+
+# dense early in training, where representations change fastest
+CHECKPOINT_STEPS = [1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200,
+    300, 500, 700, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000,
+    8000, 9000, 10_000, 12_000, 14_000, 16_000, 18_000, 20_000, 25_000,
+    30_000, 35_000, 40_000, 50_000, 60_000, 70_000, 80_000, 90_000]
+CHECKPOINT_STEPS += list(range(100_000, 200_001, 10_000))
+
+# (gender, speaker_id, audio_filename), as in the 2 Nov 200k run
+CHECKPOINT_RECORDINGS = [
+    ('male', 'N00649', str(locations.cgn_comp_o_nl / 'fn001149.wav')),
+    ('female', 'N00561', str(locations.cgn_comp_o_nl / 'fn001061.wav'))]
 
 
 def compute_speaker_pcas(output_dir='pca_outputs', n_male=10, n_female=10,
@@ -85,6 +100,90 @@ def compute_segment_pcas(output_dir='segment_pca_outputs', n_male=10,
         'context': context, 'center': center}
     return _run_segments(segments, total_duration, settings, output_dir,
         n_male, n_female, store_path, component, gpu, spawn, progress)
+
+
+def compute_checkpoint_pcas(architecture, output_dir='checkpoint_pca_segments',
+    model_version=1, steps=CHECKPOINT_STEPS, recordings=CHECKPOINT_RECORDINGS,
+    starts=(10.0, 300.0), duration=180.0, layer=9, context=2.0, center=16.0,
+    gpu=True, progress=True):
+    '''Save a PCA per recording segment for each training checkpoint.
+    architecture:   'wav2vec2' or 'huibert'
+    output_dir:     directory for PCA .npz files; embeddings are never saved
+    model_version:  pretraining run, 1 (nl1) or 2 (nl2)
+    steps:          training steps of the checkpoints
+    recordings:     (gender, speaker_id, audio_filename) tuples
+    starts:         segment starts in seconds
+    duration:       segment length in seconds
+    layer:          model hidden-state index
+    context:        context on either side of each window in seconds
+    center:         retained center of each window in seconds
+    gpu:            whether model inference uses a GPU
+    progress:       print progress and ETA after each checkpoint
+
+    Each segment is extracted separately, as in the 2 Nov 200k run.
+    Existing outputs are skipped, so an interrupted run can be restarted.
+    Returns saved paths.
+    '''
+    for start in starts:
+        _validate_settings([duration], start, context, center, 0, 0)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = _print_progress if progress else _silent_progress
+    settings = {'layer': layer, 'context': context, 'center': center}
+    segments = [(rec, start) for rec in recordings for start in starts]
+    paths = []
+    begin = time.time()
+    for index, step in enumerate(steps, start=1):
+        model_name = locations.make_model_name(architecture, model_version,
+            step)
+        paths.extend(_checkpoint_pcas(model_name, segments, duration,
+            settings, gpu, output_dir, report))
+        report(_eta_message(index, len(steps), time.time() - begin,
+            model_name))
+    report(f'Complete: {len(paths)} PCA files saved')
+    return paths
+
+
+def _checkpoint_pcas(model_name, segments, duration, settings, gpu,
+    output_dir, report):
+    '''Load one checkpoint and save PCAs for its missing segments.'''
+    missing = []
+    for recording, start in segments:
+        path = _pca_path(recording[2], start, duration, model_name,
+            settings['layer'], output_dir)
+        if path.exists(): report(f'  Exists, skipped: {path.name}')
+        else: missing.append((recording, start))
+    if not missing: return []
+    model = to_vector.load_model(str(locations.model_path(model_name)),
+        gpu=gpu)
+    model.eval()
+    paths = []
+    for (gender, speaker_id, audio_filename), start in missing:
+        segment_settings = {**settings, 'model_name': model_name,
+            'start': start}
+        embeddings, _ = windowed_embeddings.compute_windowed_embeddings(
+            audio_filename, duration=duration, model=model, gpu=gpu,
+            **segment_settings)
+        paths.append(_save_pca(embeddings, audio_filename, gender,
+            speaker_id, start, duration, segment_settings, output_dir))
+    del model
+    if gpu: torch.cuda.empty_cache()
+    return paths
+
+
+def _eta_message(index, total, elapsed, model_name):
+    '''Return a progress line with elapsed time and estimated time left.'''
+    remaining = elapsed / index * (total - index)
+    message = f'Checkpoint {index}/{total} done: {model_name} | '
+    message += f'elapsed {_format_seconds(elapsed)} | '
+    message += f'ETA {_format_seconds(remaining)}'
+    return message
+
+
+def _format_seconds(seconds):
+    minutes, seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f'{hours}:{minutes:02d}:{seconds:02d}'
 
 
 def make_segments(durations, total_duration):
@@ -277,12 +376,18 @@ def _save_pca(embeddings, audio_filename, gender, speaker_id, start,
     start is the segment start; settings['start'] is the extraction start.
     '''
     result = pca.compute_pca(embeddings)
-    filename = windowed_embeddings.make_output_filename(audio_filename, start,
-        duration, settings['model_name'], settings['layer'])
-    path = output_dir / pca.make_pca_filename(filename)
+    path = _pca_path(audio_filename, start, duration, settings['model_name'],
+        settings['layer'], output_dir)
     metadata = {**settings, 'start': start,
         'extraction_start': settings['start']}
     np.savez(path, **result, **metadata, audio_filename=audio_filename,
         duration=duration, speaker_id=speaker_id, gender=gender,
         n_frames=len(embeddings))
     return path
+
+
+def _pca_path(audio_filename, start, duration, model_name, layer, output_dir):
+    '''Return the _pca.npz output path for one segment.'''
+    filename = windowed_embeddings.make_output_filename(audio_filename, start,
+        duration, model_name, layer)
+    return Path(output_dir) / pca.make_pca_filename(filename)

@@ -10,6 +10,7 @@ import re
 phraser_data = Path('/vol/mlusers/mbentum/phraser/data')
 cgn_lmdb = phraser_data / 'cgn_lmdb'
 cgn_awd_lmdb = phraser_data / 'cgn_awd_lmdb'
+cgn_comp_o_nl = Path('/vol/bigdata2/corpora2/CGN2/data/audio/wav/comp-o/nl')
 
 speech_training_root = Path('/vol/mlusers/mbentum/speech_training/models')
 pretrained_root = speech_training_root / 'pretrained'
@@ -50,11 +51,13 @@ def model_name_to_path(model_name):
 
 
 def checkpoint_path(architecture, version, checkpoint):
-    '''Return the single checkpoint_* path in the root matching checkpoint.'''
+    '''Return the single checkpoint_<epoch>_<step> path whose step equals
+    checkpoint; the step is the last underscore-separated part of the name.
+    '''
     root = model_roots[(architecture, version)]
     matches = []
     for path in root.glob('checkpoint_*'):
-        if f'_{checkpoint}' in path.name: matches.append(path)
+        if path.name.split('_')[-1] == str(checkpoint): matches.append(path)
     if len(matches) != 1:
         m = f'expected one checkpoint {checkpoint} in {root}, '
         m += f'found {len(matches)}: {matches}'
