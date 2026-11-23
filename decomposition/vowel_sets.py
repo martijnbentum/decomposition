@@ -15,7 +15,7 @@ import numpy as np
 
 from .vowels import RECORD_FIELDS
 
-N_VOWELS = 4500
+N_VOWELS = 8000
 CAP = 0.05
 VOWEL_CELLS = [
     {'name': 'comp-k_female', 'gender': 'female', 'speaker_id': 'N02005',
