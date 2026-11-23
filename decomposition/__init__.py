@@ -1,5 +1,6 @@
 from . import pca
 from . import selection
+from . import vowel_sets
 from . import vowels
 from .experiment import compute_checkpoint_pcas, compute_segment_pcas
 from .experiment import compute_speaker_pcas
@@ -11,6 +12,7 @@ from .windowed_embeddings import select_recording
 __all__ = [
     'pca',
     'selection',
+    'vowel_sets',
     'vowels',
     'compute_checkpoint_pcas',
     'compute_segment_pcas',
