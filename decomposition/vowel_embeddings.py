@@ -1,7 +1,7 @@
 '''Store the hidden states of the sampled vowels in echoframe.
 
 Step 3 of the vowel PCA experiment. Every unique vowel in the step 2 sets is
-passed to echoframe.compute_embeddings_batch, which runs the model on the
+passed to echoframe's compute_embeddings_batch, which runs the model on the
 vowel plus a collar on each side and stores the frames fully inside the
 vowel. Each model gets its own echoframe store, because a store allows only
 one writer and the models run in parallel on separate GPUs.
@@ -15,6 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import echoframe
+from echoframe.batch_segment_features import compute_embeddings_batch
 from echoframe.utils_segment_features import segment_times
 import numpy as np
 from phraser import Store as PhraserStore
@@ -55,7 +56,7 @@ def compute_vowel_embeddings(architecture, layer=None,
     for index, (size, group) in enumerate(groups, start=1):
         print(f'Group {index}/{len(groups)}: {len(group)} vowels, '
             f'batch size {size}', flush=True)
-        echoframe.compute_embeddings_batch(group, [layer], model_name,
+        compute_embeddings_batch(group, [layer], model_name,
             store, collar=collar_ms, gpu=gpu, batch_size=size)
     return store
 
@@ -125,6 +126,7 @@ def check_vowel_embeddings(architecture, n_check=50, layer=None,
     model_name = locations.make_model_name(architecture, 1, 200_000)
     store = echoframe.Store(str(Path(store_root) / model_name))
     rows = _set_rows(sets_dir)
+    n_check = min(n_check, len(rows))
     picks = np.random.default_rng(seed).choice(len(rows), n_check,
         replace=False)
     problems = []
