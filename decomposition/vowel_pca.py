@@ -19,7 +19,7 @@ import numpy as np
 
 from . import locations, pca
 from .vowel_embeddings import VOWEL_LAYERS
-from .vowel_sets import COLLAR_MS
+from .vowel_sets import COLLAR_MS, keys_hash, set_paths
 from .vowels import key_to_bytes
 
 FRAME_CHOICES = ('center', 'all')
@@ -36,7 +36,10 @@ def run_vowel_pcas(architecture, sets_dir=locations.vowel_sets_dir,
     layer:         hidden-state layer; None uses VOWEL_LAYERS
     collar_ms:     collar the embeddings were stored with
 
-    Existing outputs are skipped. Returns the saved paths.
+    The sets are those listed in sets_dir/vowel_sets.json. An existing
+    output is skipped only if it was computed with the same model, layer,
+    collar and set keys; otherwise a ValueError is raised.
+    Returns the saved paths.
     '''
     if layer is None: layer = VOWEL_LAYERS[architecture]
     model_name = locations.make_model_name(architecture, 1, 200_000)
@@ -46,7 +49,7 @@ def run_vowel_pcas(architecture, sets_dir=locations.vowel_sets_dir,
     settings = {'model_name': model_name, 'layer': layer,
         'collar_ms': collar_ms}
     paths = []
-    for set_path in sorted(Path(sets_dir).glob('vowels_*.npz')):
+    for set_path in set_paths(sets_dir):
         begin = time.time()
         paths.extend(set_pcas(set_path, store, settings, output_dir))
         print(f'{set_path.stem} done in {time.time() - begin:.0f} s',
@@ -57,17 +60,19 @@ def run_vowel_pcas(architecture, sets_dir=locations.vowel_sets_dir,
 
 def set_pcas(set_path, store, settings, output_dir):
     '''Compute and save the missing PCAs of one vowel set.'''
+    with np.load(set_path) as data:
+        vowel_set = {name: data[name] for name in data.files}
+    source = {'set_keys_sha1': keys_hash(vowel_set['key'])}
     missing = []
     for frames in FRAME_CHOICES:
         path = pca_path(set_path, frames, output_dir)
-        if not path.exists(): missing.append((frames, path))
+        if path.exists(): check_saved_pca(path, {**settings, **source})
+        else: missing.append((frames, path))
     if not missing: return []
-    with np.load(set_path) as data:
-        vowel_set = {name: data[name] for name in data.files}
     keys = echoframe_keys(store, vowel_set['key'], settings)
     paths = []
     for frames, path in missing:
-        extra = {}
+        extra = dict(source)
         if frames == 'center': matrix = load_center_frames(store, keys)
         else:
             payloads = load_all_frames(store, keys)
@@ -76,6 +81,19 @@ def set_pcas(set_path, store, settings, output_dir):
         save_set_pca(matrix, vowel_set, frames, settings, path, **extra)
         paths.append(path)
     return paths
+
+
+def check_saved_pca(path, expected):
+    '''Raise if a saved PCA differs from the expected settings.'''
+    with np.load(path) as data:
+        saved = {}
+        for name in expected:
+            if name in data.files: saved[name] = data[name].item()
+    wrong = [name for name in expected if saved.get(name) != expected[name]]
+    if wrong:
+        message = f'{path} exists but was computed with other {wrong}: '
+        message += f'saved {saved}, requested {expected}'
+        raise ValueError(message)
 
 
 def echoframe_keys(store, hex_keys, settings):

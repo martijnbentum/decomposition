@@ -109,3 +109,27 @@ def test_full_frame_mask_removes_short_clipped_vowels():
         (b'c', 'a', 1230.0, 1400.0, 'f.wav', 'S0', 'male', 'a')]
     mask = vowel_sets.full_frame_mask(vowels.records_to_arrays(rows))
     assert mask.tolist() == [False, True, True]
+
+
+def write_candidates(tmp_path):
+    path = tmp_path / 'candidates.npz'
+    np.savez(path, **make_records())
+    return path
+
+
+def test_set_paths_follow_manifest(tmp_path):
+    cells = [speaker_cell(n=10), group_cell(n=40)]
+    sets_dir = tmp_path / 'sets'
+    vowel_sets.run_vowel_sampling(write_candidates(tmp_path), sets_dir, cells)
+    paths = vowel_sets.set_paths(sets_dir)
+    assert [p.name for p in paths] == ['vowels_x_A.npz', 'vowels_x_B.npz',
+        'vowels_g_A.npz', 'vowels_g_B.npz']
+
+
+def test_sampling_refuses_stray_set_files(tmp_path):
+    sets_dir = tmp_path / 'sets'
+    sets_dir.mkdir()
+    np.savez(sets_dir / 'vowels_old_A.npz', key=np.array(['aa']))
+    with pytest.raises(ValueError):
+        vowel_sets.run_vowel_sampling(write_candidates(tmp_path), sets_dir,
+            [speaker_cell(n=10)])

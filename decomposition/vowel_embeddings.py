@@ -21,7 +21,7 @@ import numpy as np
 from phraser import Store as PhraserStore
 
 from . import locations
-from .vowel_sets import COLLAR_MS, count_full_frames
+from .vowel_sets import COLLAR_MS, count_full_frames, set_paths
 from .vowels import key_to_bytes
 
 VOWEL_LAYERS = {'wav2vec2': 6, 'huibert': 9}
@@ -62,9 +62,9 @@ def compute_vowel_embeddings(architecture, layer=None,
 
 
 def load_set_keys(sets_dir=locations.vowel_sets_dir):
-    '''Return the sorted unique phraser keys of all vowel set files.'''
+    '''Return the sorted unique phraser keys of the manifest's sets.'''
     keys = set()
-    for path in sorted(Path(sets_dir).glob('vowels_*.npz')):
+    for path in set_paths(sets_dir):
         with np.load(path) as data:
             keys.update(key_to_bytes(key) for key in data['key'])
     return sorted(keys)
@@ -142,9 +142,9 @@ def check_vowel_embeddings(architecture, n_check=50, layer=None,
 
 
 def _set_rows(sets_dir):
-    '''Return (key, start, end) for every vowel in the set files.'''
+    '''Return (key, start, end) for every vowel in the manifest's sets.'''
     rows = {}
-    for path in sorted(Path(sets_dir).glob('vowels_*.npz')):
+    for path in set_paths(sets_dir):
         with np.load(path) as data:
             for key, start, end in zip(data['key'], data['start'],
                 data['end']):

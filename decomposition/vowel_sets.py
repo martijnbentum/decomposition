@@ -20,6 +20,7 @@ start can then contain no full frame, which makes echoframe raise; such
 vowels are removed from every pool before sampling.
 '''
 from collections import Counter
+import hashlib
 import json
 from pathlib import Path
 
@@ -37,6 +38,7 @@ FIELD = 0.025
 MIX = {'a': 0.40, 'f': 0.14, 'h': 0.12, 'g': 0.11, 'b': 0.10, 'k': 0.08,
     'j': 0.03, 'l': 0.02}
 MAX_SPEAKERS = {'k': 7}
+MANIFEST = 'vowel_sets.json'
 
 
 def speaker_cell(name, gender, speaker_id, component, seed):
@@ -255,9 +257,52 @@ def shared_counts(records, a, b):
     return counts
 
 
+def set_filename(cell_name, set_name):
+    '''Return e.g. vowels_comp-k_male_A.npz.'''
+    return f'vowels_{cell_name}_{set_name}.npz'
+
+
+def set_paths(sets_dir=locations.vowel_sets_dir):
+    '''Return the A and B set paths of every cell in the manifest.
+    The manifest (vowel_sets.json) is written last by run_vowel_sampling,
+    so set files of other or unfinished sampling runs are never returned.
+    '''
+    sets_dir = Path(sets_dir)
+    with open(sets_dir / MANIFEST) as fin:
+        cells = json.load(fin)['cells']
+    paths = []
+    for cell_name in cells:
+        for set_name in 'AB':
+            paths.append(sets_dir / set_filename(cell_name, set_name))
+    missing = [str(path) for path in paths if not path.exists()]
+    if missing: raise FileNotFoundError(f'set files missing: {missing}')
+    return paths
+
+
+def keys_hash(keys):
+    '''Return a sha1 hex digest identifying a set by its vowel keys.'''
+    text = '\n'.join(str(key) for key in keys)
+    return hashlib.sha1(text.encode()).hexdigest()
+
+
+def check_sets_dir(sets_dir, cells):
+    '''Raise if sets_dir holds set files of cells not in cells.'''
+    expected = set()
+    for cell in cells:
+        for set_name in 'AB':
+            expected.add(set_filename(cell['name'], set_name))
+    stray = []
+    for path in sorted(Path(sets_dir).glob('vowels_*.npz')):
+        if path.name not in expected: stray.append(path.name)
+    if stray:
+        message = f'{sets_dir} holds set files of other cells: {stray}; '
+        message += 'remove them or use another output_dir'
+        raise ValueError(message)
+
+
 def save_set(records, indices, cell, set_name, output_dir):
     '''Save one set's vowel records and cell settings; return the path.'''
-    path = Path(output_dir) / f"vowels_{cell['name']}_{set_name}.npz"
+    path = Path(output_dir) / set_filename(cell['name'], set_name)
     subset = {name: records[name][indices] for name in RECORD_FIELDS}
     np.savez(path, **subset, cell=cell['name'], set_name=set_name,
         seed=cell['seed'], settings=json.dumps(cell))
@@ -273,12 +318,18 @@ def run_vowel_sampling(candidates_filename=None,
                           vowel_sets.json
     cells:                speaker_cell and group_cell definitions
 
+    Raises if output_dir holds set files of other cells. The manifest is
+    removed first and written last, so an interrupted run leaves no
+    manifest and later steps refuse to start.
+
     Returns the summary dict.
     '''
     if candidates_filename is None:
         candidates_filename = locations.vowel_candidates_filename
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    check_sets_dir(output_dir, cells)
+    (output_dir / MANIFEST).unlink(missing_ok=True)
     records = load_candidates(candidates_filename)
     eligible = full_frame_mask(records)
     excluded = group_exclusion(records, cells)
@@ -297,7 +348,7 @@ def run_vowel_sampling(candidates_filename=None,
             cell_summary[set_name] = set_summary(records, indices)
         summary['cells'][cell['name']] = cell_summary
         print(format_cell(cell['name'], cell_summary), flush=True)
-    with open(output_dir / 'vowel_sets.json', 'w') as fout:
+    with open(output_dir / MANIFEST, 'w') as fout:
         json.dump(summary, fout, indent=1, ensure_ascii=False)
     return summary
 
