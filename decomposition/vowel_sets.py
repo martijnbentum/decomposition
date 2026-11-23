@@ -6,17 +6,26 @@ written by vowels.run_vowel_report. A cell is either one speaker
 per-speaker cap. Vowels are drawn uniformly over tokens, so label and
 duration frequencies follow the corpus. A and B never share a vowel token;
 in group cells the same speaker may contribute to both.
+
+echoframe stores only the frames fully inside a segment, on a 20 ms grid of
+25 ms frames that starts at max(0, start - collar). A vowel near the file
+start can then contain no full frame, which makes echoframe raise; such
+vowels are removed from every pool before sampling.
 '''
 from collections import Counter
 import json
 from pathlib import Path
 
+from frame.frames import Frame
 import numpy as np
 
 from .vowels import RECORD_FIELDS
 
 N_VOWELS = 8000
 CAP = 0.05
+COLLAR_MS = 2000
+STRIDE = 0.02
+FIELD = 0.025
 VOWEL_CELLS = [
     {'name': 'comp-k_female', 'gender': 'female', 'speaker_id': 'N02005',
         'component': 'k', 'n': N_VOWELS},
@@ -42,25 +51,56 @@ def load_candidates(filename):
         return {name: data[name] for name in RECORD_FIELDS}
 
 
-def cell_pool(records, cell):
-    '''Return indices of the candidates that belong to a cell.'''
+def count_full_frames(start_ms, end_ms, collar_ms=COLLAR_MS):
+    '''Return the number of frames echoframe would store for a vowel.'''
+    start, end = start_ms / 1000, end_ms / 1000
+    grid_start = max(0.0, start - collar_ms / 1000)
+    first = max(0, int((start - grid_start) / STRIDE) - 1)
+    last = int((end - grid_start) / STRIDE) + 1
+    count = 0
+    for index in range(first, last + 1):
+        frame = Frame(index, STRIDE, FIELD, grid_start, None)
+        if frame.overlap_percentage(start, end) >= 100: count += 1
+    return count
+
+
+def full_frame_mask(records, collar_ms=COLLAR_MS):
+    '''Return a bool array: the vowel contains at least one full frame.
+    Vowels of at least stride + field (45 ms) always do; only shorter
+    vowels are checked.
+    '''
+    durations = records['end'] - records['start']
+    mask = np.ones(len(durations), dtype=bool)
+    short = np.flatnonzero(durations < 1000 * (STRIDE + FIELD))
+    for index in short:
+        start, end = records['start'][index], records['end'][index]
+        mask[index] = count_full_frames(start, end, collar_ms) > 0
+    return mask
+
+
+def cell_pool(records, cell, eligible=None):
+    '''Return indices of the eligible candidates that belong to a cell.
+    eligible is an optional bool array, e.g. from full_frame_mask.
+    '''
     mask = records['gender'] == cell['gender']
+    if eligible is not None: mask &= eligible
     if 'speaker_id' in cell: mask &= records['speaker_id'] == cell['speaker_id']
     if 'component' in cell: mask &= records['component'] == cell['component']
     return np.flatnonzero(mask)
 
 
-def sample_cell(records, cell, seed=0):
+def sample_cell(records, cell, seed=0, eligible=None):
     '''Return (a_indices, b_indices), disjoint and each of length cell['n'].
     records:  candidate arrays from load_candidates
     cell:     dict with name, gender, n and either speaker_id (plus an
               optional component) or cap (maximum share per speaker)
     seed:     seed of the shuffle; the same seed gives the same sets
+    eligible: optional bool array restricting the candidates
 
     The pool is shuffled once; A takes the first eligible tokens and B
     continues from where A stopped. Indices are returned sorted.
     '''
-    pool = cell_pool(records, cell)
+    pool = cell_pool(records, cell, eligible)
     order = np.random.default_rng(seed).permutation(pool)
     if 'cap' in cell:
         speakers = records['speaker_id']
@@ -128,13 +168,17 @@ def run_vowel_sampling(candidates_filename, output_dir, cells=VOWEL_CELLS,
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     records = load_candidates(candidates_filename)
+    eligible = full_frame_mask(records)
+    n_removed = int((~eligible).sum())
+    print(f'{n_removed} vowels without a full frame removed', flush=True)
     summary = {'candidates': str(candidates_filename), 'seed': seed,
+        'collar_ms': COLLAR_MS, 'no_full_frame_removed': n_removed,
         'cells': {}}
     for offset, cell in enumerate(cells):
         cell_seed = seed + offset
-        a, b = sample_cell(records, cell, cell_seed)
+        a, b = sample_cell(records, cell, cell_seed, eligible)
         cell_summary = {'settings': cell, 'seed': cell_seed,
-            'pool': len(cell_pool(records, cell))}
+            'pool': len(cell_pool(records, cell, eligible))}
         for set_name, indices in (('A', a), ('B', b)):
             save_set(records, indices, cell, set_name, cell_seed, output_dir)
             cell_summary[set_name] = set_summary(records, indices)

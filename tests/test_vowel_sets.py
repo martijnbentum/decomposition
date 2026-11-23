@@ -51,3 +51,20 @@ def test_too_small_pool_raises():
     cell = {'name': 'x', 'gender': 'female', 'speaker_id': 'S0', 'n': 6}
     with pytest.raises(ValueError):
         vowel_sets.sample_cell(records, cell)
+
+
+def test_count_full_frames_matches_grid():
+    # unclipped: the grid starts exactly at the vowel start
+    assert vowel_sets.count_full_frames(5000, 5029) == 1
+    assert vowel_sets.count_full_frames(5000, 5065) == 3
+    # clipped at the file start: grid at 0, 20, 40 ms ...
+    assert vowel_sets.count_full_frames(1230, 1260) == 0
+    assert vowel_sets.count_full_frames(1240, 1265) == 1
+
+
+def test_full_frame_mask_removes_short_clipped_vowels():
+    rows = [(b'a', 'a', 1230.0, 1260.0, 'f.wav', 'S0', 'male', 'a'),
+        (b'b', 'a', 5000.0, 5029.0, 'f.wav', 'S0', 'male', 'a'),
+        (b'c', 'a', 1230.0, 1400.0, 'f.wav', 'S0', 'male', 'a')]
+    mask = vowel_sets.full_frame_mask(vowels.records_to_arrays(rows))
+    assert mask.tolist() == [False, True, True]
