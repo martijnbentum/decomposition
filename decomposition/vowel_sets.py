@@ -15,7 +15,7 @@ import numpy as np
 
 from .vowels import RECORD_FIELDS
 
-N_VOWELS = 3500
+N_VOWELS = 4500
 CAP = 0.05
 VOWEL_CELLS = [
     {'name': 'comp-k_female', 'gender': 'female', 'speaker_id': 'N02005',
@@ -26,12 +26,13 @@ VOWEL_CELLS = [
         'component': 'a', 'n': N_VOWELS},
     {'name': 'comp-a_male', 'gender': 'male', 'speaker_id': 'N01238',
         'component': 'a', 'n': N_VOWELS},
-    {'name': 'group-3500_female', 'gender': 'female', 'cap': CAP,
+    {'name': f'group-{N_VOWELS}_female', 'gender': 'female', 'cap': CAP,
         'n': N_VOWELS},
-    {'name': 'group-3500_male', 'gender': 'male', 'cap': CAP, 'n': N_VOWELS},
-    {'name': 'group-7000_female', 'gender': 'female', 'cap': CAP,
+    {'name': f'group-{N_VOWELS}_male', 'gender': 'male', 'cap': CAP,
+        'n': N_VOWELS},
+    {'name': f'group-{2 * N_VOWELS}_female', 'gender': 'female', 'cap': CAP,
         'n': 2 * N_VOWELS},
-    {'name': 'group-7000_male', 'gender': 'male', 'cap': CAP,
+    {'name': f'group-{2 * N_VOWELS}_male', 'gender': 'male', 'cap': CAP,
         'n': 2 * N_VOWELS}]
 
 
