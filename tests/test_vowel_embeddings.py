@@ -1,5 +1,9 @@
 from types import SimpleNamespace
 
+import numpy as np
+import soundfile as sf
+from to_vector.audio import load_audio
+
 from decomposition import vowel_embeddings
 
 
@@ -26,3 +30,19 @@ def test_group_by_window_never_mixes_lengths():
     for size, group in groups[:-1]:
         lengths = {vowel_embeddings.window_samples(p) for p in group}
         assert len(lengths) == 1
+
+
+def test_grouping_matches_loaded_16khz_lengths(tmp_path):
+    path = tmp_path / 'audio.wav'
+    sf.write(path, np.zeros(8 * 16000), 16000)
+    phones = [make_phone(3000, 3080), make_phone(3059, 3139)]
+    groups = vowel_embeddings.group_by_window(phones, batch_size=2,
+        min_group=1)
+    assert len(groups) == 2
+    lengths = []
+    for phone in phones:
+        _, _, start, end = vowel_embeddings.segment_times(phone, 2000)
+        loaded_length = len(load_audio(path, start, end))
+        assert vowel_embeddings.window_samples(phone) == loaded_length
+        lengths.append(loaded_length)
+    assert lengths == [65280, 65279]

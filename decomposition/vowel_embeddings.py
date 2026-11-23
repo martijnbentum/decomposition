@@ -94,7 +94,7 @@ def open_vowel_store(model_name, store_root, phraser_store):
 def window_samples(phone, collar_ms=COLLAR_MS):
     '''Return the model input length in samples, as echoframe cuts it.'''
     _, _, start, end = segment_times(phone, collar_ms)
-    return round((end - start) * SAMPLE_RATE)
+    return int((end - start) * SAMPLE_RATE)
 
 
 def group_by_window(phones, collar_ms=COLLAR_MS, batch_size=16,
