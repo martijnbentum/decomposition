@@ -38,7 +38,8 @@ def test_center_and_all_frames():
     store = make_store()
     center = vowel_pca.load_center_frames(store, ['a', 'b'])
     assert center.tolist() == [[2.0, 3.0], [12.0, 13.0]]
-    assert vowel_pca.load_all_frames(store, ['a', 'b']).shape == (5, 2)
+    payloads = vowel_pca.load_all_frames(store, ['a', 'b'])
+    assert [len(p) for p in payloads] == [3, 2]
 
 
 def test_missing_vowel_raises():

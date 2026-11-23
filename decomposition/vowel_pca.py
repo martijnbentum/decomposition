@@ -7,7 +7,8 @@ are computed:
 - center: one vector per vowel, echoframe's center frame (stored frame
   n // 2; with an even count the later of the two middle frames)
 - all:    every stored frame of every vowel, i.e. all frames fully inside
-  the vowel boundaries, stacked
+  the vowel boundaries, stacked in set order; n_frames_per_vowel in the
+  output gives the boundaries
 '''
 import json
 from pathlib import Path
@@ -26,8 +27,7 @@ FRAME_CHOICES = ('center', 'all')
 
 def run_vowel_pcas(architecture, sets_dir=locations.vowel_sets_dir,
     store_root=locations.vowel_store_root,
-    output_dir=locations.decomposition_root / 'vowel_pca', layer=None,
-    collar_ms=COLLAR_MS):
+    output_dir=locations.vowel_pca_dir, layer=None, collar_ms=COLLAR_MS):
     '''Save center and all-frame PCAs for every vowel set of one model.
     architecture:  'wav2vec2' or 'huibert' (nl1, checkpoint 200000)
     sets_dir:      directory with the vowels_<cell>_<set>.npz files
@@ -67,9 +67,13 @@ def set_pcas(set_path, store, settings, output_dir):
     keys = echoframe_keys(store, vowel_set['key'], settings)
     paths = []
     for frames, path in missing:
+        extra = {}
         if frames == 'center': matrix = load_center_frames(store, keys)
-        else: matrix = load_all_frames(store, keys)
-        save_set_pca(matrix, vowel_set, frames, settings, path)
+        else:
+            payloads = load_all_frames(store, keys)
+            matrix = np.concatenate(payloads)
+            extra['n_frames_per_vowel'] = [len(p) for p in payloads]
+        save_set_pca(matrix, vowel_set, frames, settings, path, **extra)
         paths.append(path)
     return paths
 
@@ -93,12 +97,12 @@ def load_center_frames(store, keys):
 
 
 def load_all_frames(store, keys):
-    '''Return all stored frames of all vowels as (n_frames, dim).'''
+    '''Return the stored frames per vowel, a list of (n_frames, dim).'''
     metadata = store.load_many_metadata(keys, keep_missing=True)
     _check_complete(metadata, 'metadata')
     payloads = store.storage.load_many(metadata)
     _check_complete(payloads, 'payloads')
-    return np.concatenate(payloads)
+    return payloads
 
 
 def _check_complete(items, name):
@@ -112,11 +116,13 @@ def pca_path(set_path, frames, output_dir):
     return Path(output_dir) / f'{Path(set_path).stem}_{frames}_pca.npz'
 
 
-def save_set_pca(matrix, vowel_set, frames, settings, path):
-    '''Compute the PCA of matrix and save it with the set metadata.'''
+def save_set_pca(matrix, vowel_set, frames, settings, path, **extra):
+    '''Compute the PCA of matrix and save it with the set metadata.
+    extra holds additional arrays, e.g. n_frames_per_vowel.
+    '''
     result = pca.compute_pca(matrix)
     cell = str(vowel_set['cell'])
-    np.savez(path, **result, **settings, cell=cell,
+    np.savez(path, **result, **settings, **extra, cell=cell,
         set_name=str(vowel_set['set_name']), frames=frames,
         gender=cell.split('_')[-1], n_vowels=len(vowel_set['key']),
         n_frames=len(matrix), cell_settings=str(vowel_set['settings']),

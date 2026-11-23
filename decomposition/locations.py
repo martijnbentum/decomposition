@@ -13,8 +13,13 @@ cgn_awd_lmdb = phraser_data / 'cgn_awd_lmdb'
 cgn_comp_o_nl = Path('/vol/bigdata2/corpora2/CGN2/data/audio/wav/comp-o/nl')
 
 decomposition_root = Path('/vol/mlusers/mbentum/decomposition')
-vowel_sets_dir = decomposition_root / 'vowel_sets'
-vowel_store_root = decomposition_root / 'echoframe_vowels'
+# vowel PCA experiment v2: every step writes below vowel_root
+vowel_root = decomposition_root / 'vowels_v2'
+vowel_report_dir = vowel_root / 'report'
+vowel_candidates_filename = vowel_report_dir / 'vowel_candidates.npz'
+vowel_sets_dir = vowel_root / 'sets'
+vowel_store_root = vowel_root / 'echoframe'
+vowel_pca_dir = vowel_root / 'pca'
 
 speech_training_root = Path('/vol/mlusers/mbentum/speech_training/models')
 pretrained_root = speech_training_root / 'pretrained'
