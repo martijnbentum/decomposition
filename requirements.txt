@@ -1,6 +1,7 @@
 # CUDA 12.6 torch wheels; pip falls back to PyPI on macOS.
 --extra-index-url https://download.pytorch.org/whl/cu126
 
+echoframe @ git+https://github.com/martijnbentum/echoframe.git
 numpy
 phraser @ git+https://github.com/martijnbentum/phraser.git
 progressbar2>=4.5.0

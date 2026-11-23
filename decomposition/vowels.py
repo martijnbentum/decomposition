@@ -47,7 +47,9 @@ def collect_vowel_candidates(store_path=locations.cgn_lmdb,
     progress:            print progress every 100 recordings
 
     records is a dict of equal-length numpy arrays named RECORD_FIELDS;
-    start and end are in milliseconds, key holds the phraser phone keys.
+    start and end are in milliseconds; key holds the phraser phone keys as
+    hex strings (numpy bytes arrays drop trailing NUL bytes), see
+    key_to_bytes.
     '''
     store = Store(store_path, eager_query_roots=False)
     audios = cgn.select_audios(store=store, components=components,
@@ -169,9 +171,15 @@ def records_to_arrays(rows):
     arrays = {}
     for name, column in zip(RECORD_FIELDS, columns):
         if name in ('start', 'end'): arrays[name] = np.array(column, float)
-        elif name == 'key': arrays[name] = np.array(column, dtype=bytes)
+        elif name == 'key':
+            arrays[name] = np.array([key.hex() for key in column], dtype=str)
         else: arrays[name] = np.array(column, dtype=str)
     return arrays
+
+
+def key_to_bytes(hex_key):
+    '''Return the phraser key for a hex key from the records.'''
+    return bytes.fromhex(str(hex_key))
 
 
 def speaker_vowel_report(records):

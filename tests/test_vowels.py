@@ -49,3 +49,10 @@ def test_speaker_report_and_feasibility():
 
 def test_suggest_n_uses_mean_duration():
     assert vowels.suggest_n(make_records(), budget_seconds=0.19) == 3
+
+
+def test_keys_with_trailing_nul_survive_records():
+    key = b'\x01\x02\x00'
+    rows = [(key, 'a', 1000.0, 1080.0, 'f.wav', 'N1', 'male', 'o')]
+    records = vowels.records_to_arrays(rows)
+    assert vowels.key_to_bytes(records['key'][0]) == key

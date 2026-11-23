@@ -12,6 +12,10 @@ cgn_lmdb = phraser_data / 'cgn_lmdb'
 cgn_awd_lmdb = phraser_data / 'cgn_awd_lmdb'
 cgn_comp_o_nl = Path('/vol/bigdata2/corpora2/CGN2/data/audio/wav/comp-o/nl')
 
+decomposition_root = Path('/vol/mlusers/mbentum/decomposition')
+vowel_sets_dir = decomposition_root / 'vowel_sets'
+vowel_store_root = decomposition_root / 'echoframe_vowels'
+
 speech_training_root = Path('/vol/mlusers/mbentum/speech_training/models')
 pretrained_root = speech_training_root / 'pretrained'
 model_roots = {
